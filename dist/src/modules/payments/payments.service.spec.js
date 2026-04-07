@@ -101,6 +101,8 @@ describe('PaymentsService', () => {
                     name: dto.name,
                     amount: dto.amount,
                     description: dto.description,
+                    type: 'incoming',
+                    isActive: true,
                 },
             });
         });
@@ -373,7 +375,9 @@ describe('PaymentsService', () => {
             mockPrismaService.otherPayment.aggregate
                 .mockResolvedValueOnce({ _count: 5, _sum: { amount: new library_1.Decimal(2500) } })
                 .mockResolvedValueOnce({ _count: 10, _sum: { amount: new library_1.Decimal(5000) } })
-                .mockResolvedValueOnce({ _count: 17, _sum: { amount: new library_1.Decimal(7500) } });
+                .mockResolvedValueOnce({ _count: 17, _sum: { amount: new library_1.Decimal(7500) } })
+                .mockResolvedValueOnce({ _count: 8, _sum: { amount: new library_1.Decimal(4000) } })
+                .mockResolvedValueOnce({ _count: 2, _sum: { amount: new library_1.Decimal(1000) } });
             mockPrismaService.otherPayment.count.mockResolvedValue(2);
             const result = await service.getPaymentSummary();
             expect(result.pending.count).toBe(5);
@@ -383,6 +387,10 @@ describe('PaymentsService', () => {
             expect(result.cancelled).toBe(2);
             expect(result.total.count).toBe(17);
             expect(result.total.amount).toBe(7500);
+            expect(result.income.count).toBe(8);
+            expect(result.income.amount).toBe(4000);
+            expect(result.expense.count).toBe(2);
+            expect(result.expense.amount).toBe(1000);
         });
         it('should filter summary by payment type', async () => {
             mockPrismaService.otherPayment.aggregate.mockResolvedValue({ _count: 0, _sum: { amount: null } });

@@ -34,6 +34,7 @@ export type MockPrismaService = {
         create: jest.Mock;
         update: jest.Mock;
         delete: jest.Mock;
+        count: jest.Mock;
     };
     mosqueRole: {
         findMany: jest.Mock;

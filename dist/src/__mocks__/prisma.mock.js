@@ -38,6 +38,7 @@ const createMockPrismaService = () => ({
         create: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        count: jest.fn(),
     },
     mosqueRole: {
         findMany: jest.fn(),

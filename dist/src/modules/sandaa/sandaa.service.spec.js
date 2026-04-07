@@ -25,15 +25,12 @@ describe('SandaaService', () => {
             count: jest.fn(),
             aggregate: jest.fn(),
         },
-        family: {
+        person: {
             findMany: jest.fn(),
             findFirst: jest.fn(),
             findUnique: jest.fn(),
             update: jest.fn(),
             count: jest.fn(),
-        },
-        person: {
-            findUnique: jest.fn(),
         },
         mahalla: {
             findMany: jest.fn(),
@@ -173,22 +170,24 @@ describe('SandaaService', () => {
     });
     describe('generatePayments', () => {
         it('should generate payments for eligible families', async () => {
-            const mockFamilies = [
+            const mockFamilyHeads = [
                 {
-                    id: 'f1',
-                    familyHeadId: 'p1',
-                    familyHead: { id: 'p1', fullName: 'John Doe' },
+                    id: 'p1',
+                    fullName: 'John Doe',
+                    familyHeadId: null,
+                    isSandaaEligible: true,
                     house: { mahallaId: 'm1', mahalla: { title: 'North Area' } },
                 },
                 {
-                    id: 'f2',
-                    familyHeadId: 'p2',
-                    familyHead: { id: 'p2', fullName: 'Jane Doe' },
+                    id: 'p2',
+                    fullName: 'Jane Doe',
+                    familyHeadId: null,
+                    isSandaaEligible: true,
                     house: { mahallaId: 'm1', mahalla: { title: 'North Area' } },
                 },
             ];
             const mockConfig = { id: 'c1', amount: new library_1.Decimal(500) };
-            mockPrismaService.family.findMany.mockResolvedValue(mockFamilies);
+            mockPrismaService.person.findMany.mockResolvedValue(mockFamilyHeads);
             mockPrismaService.sandaaConfig.findFirst.mockResolvedValue(mockConfig);
             mockPrismaService.sandaaPayment.findUnique.mockResolvedValue(null);
             mockPrismaService.sandaaPayment.create.mockResolvedValue({});
@@ -198,16 +197,17 @@ describe('SandaaService', () => {
             expect(mockPrismaService.sandaaPayment.create).toHaveBeenCalledTimes(2);
         });
         it('should skip families with existing payments', async () => {
-            const mockFamilies = [
+            const mockFamilyHeads = [
                 {
-                    id: 'f1',
-                    familyHeadId: 'p1',
-                    familyHead: { id: 'p1' },
+                    id: 'p1',
+                    fullName: 'John Doe',
+                    familyHeadId: null,
+                    isSandaaEligible: true,
                     house: { mahallaId: 'm1', mahalla: {} },
                 },
             ];
             const mockConfig = { id: 'c1', amount: new library_1.Decimal(500) };
-            mockPrismaService.family.findMany.mockResolvedValue(mockFamilies);
+            mockPrismaService.person.findMany.mockResolvedValue(mockFamilyHeads);
             mockPrismaService.sandaaConfig.findFirst.mockResolvedValue(mockConfig);
             mockPrismaService.sandaaPayment.findUnique.mockResolvedValue({ id: 'existing' });
             const result = await service.generatePayments({ month: 1, year: 2025 });
@@ -215,7 +215,7 @@ describe('SandaaService', () => {
             expect(result.skipped).toBe(1);
         });
         it('should return message when no eligible families found', async () => {
-            mockPrismaService.family.findMany.mockResolvedValue([]);
+            mockPrismaService.person.findMany.mockResolvedValue([]);
             const result = await service.generatePayments({ month: 1, year: 2025 });
             expect(result.created).toBe(0);
             expect(result.skipped).toBe(0);
@@ -299,22 +299,22 @@ describe('SandaaService', () => {
     });
     describe('updateFamilyEligibility', () => {
         it('should update family eligibility', async () => {
-            const mockFamily = { id: 'f1', isSandaaEligible: true };
-            mockPrismaService.family.findUnique.mockResolvedValue(mockFamily);
-            mockPrismaService.family.update.mockResolvedValue({
-                ...mockFamily,
+            const mockPerson = { id: 'p1', familyHeadId: null, isSandaaEligible: true };
+            mockPrismaService.person.findUnique.mockResolvedValue(mockPerson);
+            mockPrismaService.person.update.mockResolvedValue({
+                ...mockPerson,
                 isSandaaEligible: false,
                 sandaaExemptReason: 'Financial hardship',
             });
             const result = await service.updateFamilyEligibility({
-                familyId: 'f1',
+                familyId: 'p1',
                 isSandaaEligible: false,
                 sandaaExemptReason: 'Financial hardship',
             });
             expect(result.isSandaaEligible).toBe(false);
         });
         it('should throw NotFoundException when family not found', async () => {
-            mockPrismaService.family.findUnique.mockResolvedValue(null);
+            mockPrismaService.person.findUnique.mockResolvedValue(null);
             await expect(service.updateFamilyEligibility({
                 familyId: 'non-existent',
                 isSandaaEligible: false,
@@ -324,7 +324,7 @@ describe('SandaaService', () => {
     describe('checkPaymentsGenerated', () => {
         it('should check if payments are generated', async () => {
             mockPrismaService.sandaaPayment.count.mockResolvedValue(10);
-            mockPrismaService.family.count.mockResolvedValue(10);
+            mockPrismaService.person.count.mockResolvedValue(10);
             const result = await service.checkPaymentsGenerated(1, 2025);
             expect(result.isGenerated).toBe(true);
             expect(result.generatedCount).toBe(10);
@@ -387,7 +387,10 @@ describe('SandaaService', () => {
             mockPrismaService.sandaaConfig.findFirst
                 .mockResolvedValueOnce(mockGlobalConfig)
                 .mockResolvedValueOnce(null)
-                .mockResolvedValueOnce({ id: 'c2', amount: new library_1.Decimal(600) });
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce({ id: 'c2', amount: new library_1.Decimal(600) })
+                .mockResolvedValueOnce(null);
             const result = await service.getAllConfigsByMahalla();
             expect(result).toHaveLength(3);
             expect(result[0].mahallaTitle).toBe('Default (All Mahallas)');

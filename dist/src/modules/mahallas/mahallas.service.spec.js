@@ -39,8 +39,11 @@ describe('MahallasService', () => {
                 { ...mockMahalla, _count: { houses: 5, mosques: 2 } },
             ];
             prisma.mahalla.findMany.mockResolvedValue(mockMahallas);
+            prisma.person.count.mockResolvedValue(0);
             const result = await service.findAll();
-            expect(result).toEqual(mockMahallas);
+            expect(result).toEqual([
+                { ...mockMahalla, _count: { houses: 5, mosques: 2, families: 0, people: 0 } },
+            ]);
             expect(prisma.mahalla.findMany).toHaveBeenCalledWith({
                 where: { isActive: true },
                 include: {
@@ -138,12 +141,22 @@ describe('MahallasService', () => {
     describe('getStats', () => {
         it('should return statistics for a mahalla', async () => {
             prisma.house.count.mockResolvedValue(10);
-            prisma.person.count.mockResolvedValueOnce(50).mockResolvedValueOnce(45);
+            prisma.mosque.count.mockResolvedValue(2);
+            prisma.person.count
+                .mockResolvedValueOnce(50)
+                .mockResolvedValueOnce(45)
+                .mockResolvedValueOnce(25)
+                .mockResolvedValueOnce(25)
+                .mockResolvedValueOnce(12);
             const result = await service.getStats('mahalla-1');
             expect(result).toEqual({
-                housesCount: 10,
-                peopleCount: 50,
+                totalHouses: 10,
+                totalPeople: 50,
                 activeMembers: 45,
+                totalMosques: 2,
+                maleCount: 25,
+                femaleCount: 25,
+                totalFamilies: 12,
             });
         });
     });

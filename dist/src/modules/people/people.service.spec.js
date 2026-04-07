@@ -218,7 +218,6 @@ describe('PeopleService', () => {
     describe('delete', () => {
         it('should delete a person who is not a family head', async () => {
             prisma.person.count.mockResolvedValue(0);
-            prisma.family.findFirst.mockResolvedValue(null);
             prisma.person.delete.mockResolvedValue(mockPerson);
             const result = await service.delete('person-1');
             expect(result).toEqual({ message: 'Person deleted successfully' });
@@ -228,23 +227,17 @@ describe('PeopleService', () => {
             await expect(service.delete('person-1')).rejects.toThrow(common_1.BadRequestException);
             expect(prisma.person.delete).not.toHaveBeenCalled();
         });
-        it('should throw BadRequestException if person is assigned as family head in Family model', async () => {
-            prisma.person.count.mockResolvedValue(0);
-            prisma.family.findFirst.mockResolvedValue({ id: 'family-1', familyHeadId: 'person-1' });
-            await expect(service.delete('person-1')).rejects.toThrow(common_1.BadRequestException);
-            expect(prisma.person.delete).not.toHaveBeenCalled();
-        });
     });
     describe('getFamilyHeads', () => {
         it('should return all family heads', async () => {
             const mockHeads = [
-                { ...mockPerson, familyHeadId: null, familyMembers: [], familyAsHead: { id: 'family-1' } },
+                { ...mockPerson, familyHeadId: null, familyMembers: [] },
             ];
             prisma.person.findMany.mockResolvedValue(mockHeads);
             const result = await service.getFamilyHeads();
             expect(result).toEqual(mockHeads);
             expect(prisma.person.findMany).toHaveBeenCalledWith({
-                where: { familyAsHead: { isNot: null } },
+                where: { familyHeadId: null },
                 include: expect.any(Object),
                 orderBy: { fullName: 'asc' },
             });
@@ -254,7 +247,7 @@ describe('PeopleService', () => {
             await service.getFamilyHeads('mahalla-1');
             expect(prisma.person.findMany).toHaveBeenCalledWith({
                 where: {
-                    familyAsHead: { isNot: null },
+                    familyHeadId: null,
                     house: { mahallaId: 'mahalla-1' },
                 },
                 include: expect.any(Object),

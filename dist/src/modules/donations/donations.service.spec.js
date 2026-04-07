@@ -5,6 +5,7 @@ const donations_service_1 = require("./donations.service");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const common_1 = require("@nestjs/common");
 const donation_dto_1 = require("./dto/donation.dto");
+const library_1 = require("@prisma/client/runtime/library");
 describe('DonationsService', () => {
     let service;
     let prisma;
@@ -18,6 +19,7 @@ describe('DonationsService', () => {
         donation: {
             findMany: jest.fn(),
             findUnique: jest.fn(),
+            findFirst: jest.fn(),
             create: jest.fn(),
             update: jest.fn(),
             delete: jest.fn(),
@@ -255,6 +257,16 @@ describe('DonationsService', () => {
                 recipient: null,
                 category: { id: '1', name: 'Cash Donation' },
             };
+            mockPrismaService.donationCategory.findUnique.mockResolvedValue({
+                id: '1', name: 'Cash Donation', type: 'money', isActive: true,
+            });
+            mockPrismaService.donation.aggregate
+                .mockResolvedValueOnce({ _sum: { amount: new library_1.Decimal(50000) } })
+                .mockResolvedValueOnce({ _sum: { quantity: null, estimatedValue: null } });
+            mockPrismaService.donationDistribution.aggregate
+                .mockResolvedValueOnce({ _sum: { amount: new library_1.Decimal(0) } })
+                .mockResolvedValueOnce({ _sum: { quantity: null } });
+            mockPrismaService.donation.findFirst.mockResolvedValue(null);
             mockPrismaService.donationDistribution.create.mockResolvedValue(mockDistribution);
             const result = await service.createDistribution(createDto);
             expect(result).toEqual(mockDistribution);

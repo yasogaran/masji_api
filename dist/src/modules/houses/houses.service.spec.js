@@ -84,7 +84,7 @@ describe('HousesService', () => {
             };
             prisma.house.findUnique.mockResolvedValue(mockHouseWithPeople);
             const result = await service.findById('house-1');
-            expect(result).toEqual(mockHouseWithPeople);
+            expect(result).toEqual({ ...mockHouseWithPeople, familyHeads: [] });
         });
         it('should throw NotFoundException when house not found', async () => {
             prisma.house.findUnique.mockResolvedValue(null);
