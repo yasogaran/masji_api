@@ -1,0 +1,962 @@
+// Prisma Schema for Mosque Management System
+// Database-per-Tenant Architecture
+// Each mosque has its own database - NO tenant_id columns needed
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TENANT SETTINGS (stored in each tenant's own DB)
+// ============================================
+model TenantSettings {
+  id           String   @id @default(uuid())
+  settingKey   String   @unique @map("setting_key")
+  settingValue String?  @map("setting_value")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("tenant_settings")
+}
+
+// ============================================
+// LOOKUP TABLES
+// ============================================
+model MemberStatus {
+  id     Int      @id @default(autoincrement())
+  title  String   @db.VarChar(30)
+  people Person[]
+
+  @@map("member_statuses")
+}
+
+model CivilStatus {
+  id     Int      @id @default(autoincrement())
+  title  String   @db.VarChar(30)
+  people Person[]
+
+  @@map("civil_statuses")
+}
+
+model EducationLevel {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(50)
+  sortOrder Int      @default(0) @map("sort_order")
+  people    Person[]
+
+  @@map("education_levels")
+}
+
+model Occupation {
+  id     Int      @id @default(autoincrement())
+  title  String   @db.VarChar(100)
+  people Person[]
+
+  @@map("occupations")
+}
+
+model RelationshipType {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(30)
+  sortOrder Int      @default(0) @map("sort_order")
+  people    Person[]
+
+  @@map("relationship_types")
+}
+
+// ============================================
+// ORGANIZATION STRUCTURE
+// ============================================
+model Mahalla {
+  id          String   @id @default(uuid())
+  title       String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  isOutJamath Boolean  @default(false) @map("is_out_jamath") // Special category for people outside the jamath
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String?  @map("created_by")
+
+  houses        House[]
+  mosques       Mosque[]
+  sandaaConfigs SandaaConfig[]
+  boardMembers  BoardMember[]
+
+  @@map("mahallas")
+}
+
+model House {
+  id           String   @id @default(uuid())
+  mahallaId    String   @map("mahalla_id")
+  houseNumber  Int      @map("house_number")
+  addressLine1 String?  @map("address_line_1") @db.VarChar(100)
+  addressLine2 String?  @map("address_line_2") @db.VarChar(100)
+  addressLine3 String?  @map("address_line_3") @db.VarChar(100)
+  city         String?  @db.VarChar(50)
+  postalCode   String?  @map("postal_code") @db.VarChar(10)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by")
+
+  mahalla  Mahalla  @relation(fields: [mahallaId], references: [id])
+  people   Person[]
+
+  @@unique([mahallaId, houseNumber])
+  @@map("houses")
+}
+
+model Mosque {
+  id           String   @id @default(uuid())
+  mahallaId    String   @map("mahalla_id")
+  name         String   @db.VarChar(100)
+  mosqueType   String   @default("sub") @map("mosque_type") @db.VarChar(20)
+  addressLine1 String?  @map("address_line_1") @db.VarChar(100)
+  addressLine2 String?  @map("address_line_2") @db.VarChar(100)
+  city         String?  @db.VarChar(50)
+  phone        String?  @db.VarChar(20)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  mahalla         Mahalla               @relation(fields: [mahallaId], references: [id])
+  roleAssignments MosqueRoleAssignment[]
+
+  @@map("mosques")
+}
+
+// ============================================
+// PEOPLE (Family is implicit - members point to their family head)
+// ============================================
+model Person {
+  id                 String    @id @default(uuid())
+  fullName           String    @map("full_name") @db.VarChar(100)
+  nic                String?   @unique @db.VarChar(20)
+  dob                DateTime? @db.Date
+  gender             String?   @db.VarChar(10)
+  phone              String?   @db.VarChar(20)
+  email              String?   @db.VarChar(100)
+  houseId            String    @map("house_id")
+  // Family relationship: familyHeadId points to the family head
+  // If NULL, this person IS a family head
+  familyHeadId       String?   @map("family_head_id")
+  relationshipTypeId Int?      @map("relationship_type_id")
+  memberStatusId     Int?      @default(1) @map("member_status_id")
+  civilStatusId      Int?      @map("civil_status_id")
+  dateOfDeath        DateTime? @map("date_of_death") @db.Date
+  educationLevelId   Int?      @map("education_level_id")
+  occupationId       Int?      @map("occupation_id")
+  bloodGroup         String?   @map("blood_group") @db.VarChar(5)
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  createdBy          String?   @map("created_by")
+  
+  // Family head specific fields (only used when this person IS a family head)
+  isFamilyHead       Boolean   @default(false) @map("is_family_head")
+  familyName         String?   @map("family_name") @db.VarChar(100)
+  isSandaaEligible   Boolean   @default(true) @map("is_sandaa_eligible")
+  sandaaExemptReason String?   @map("sandaa_exempt_reason") @db.VarChar(200)
+
+  house            House             @relation(fields: [houseId], references: [id])
+  familyHead       Person?           @relation("FamilyMembership", fields: [familyHeadId], references: [id])
+  familyMembers    Person[]          @relation("FamilyMembership")
+  relationshipType RelationshipType? @relation(fields: [relationshipTypeId], references: [id])
+  memberStatus     MemberStatus?     @relation(fields: [memberStatusId], references: [id])
+  civilStatus      CivilStatus?      @relation(fields: [civilStatusId], references: [id])
+  educationLevel   EducationLevel?   @relation(fields: [educationLevelId], references: [id])
+  occupation       Occupation?       @relation(fields: [occupationId], references: [id])
+
+  // Payments
+  sandaaPayments        SandaaPayment[]         @relation("PersonPayments")
+  sandaaReceivedBy      SandaaPayment[]         @relation("ReceivedByPerson")
+  otherPayments         OtherPayment[]          @relation("PersonOtherPayments")
+  otherPaymentsReceived OtherPayment[]          @relation("ReceivedByPersonOther")
+
+  // Zakath
+  zakathCollections   ZakathCollection[]
+  zakathRequests      ZakathRequest[]
+  zakathDistributions ZakathDistribution[]
+
+  // Kurbaan
+  kurbaanParticipants   KurbaanParticipant[] @relation("KurbaanFamilyHead")
+  kurbaanDistributedBy  KurbaanParticipant[] @relation("DistributedBy")
+
+  // Donations
+  donations             Donation[]
+  donationDistributions DonationDistribution[]
+
+  // Finance
+  incomes  Income[]
+  expenses Expense[]
+  salaries Salary[]
+
+  // Inventory
+  inventoryRentals InventoryRental[]
+
+  // Board & Roles
+  boardMembers            BoardMember[]
+  mosqueRoleAssignments   MosqueRoleAssignment[]
+
+  // Issues
+  issuesRaised Issue[]
+
+  // Users
+  user User?
+
+  @@index([familyHeadId])
+  @@index([houseId])
+  @@index([fullName])
+  @@map("people")
+}
+
+// ============================================
+// SANDAA (REGULAR DUES)
+// ============================================
+model SandaaConfig {
+  id            String    @id @default(uuid())
+  mahallaId     String?   @map("mahalla_id")
+  amount        Decimal   @db.Decimal(10, 2)
+  frequency     String?   @db.VarChar(10)
+  whoPays       String?   @map("who_pays") @db.VarChar(20)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+  createdBy     String?   @map("created_by")
+
+  mahalla Mahalla? @relation(fields: [mahallaId], references: [id])
+
+  @@map("sandaa_configs")
+}
+
+model SandaaPayment {
+  id          String    @id @default(uuid())
+  personId    String    @map("person_id")
+  periodMonth Int       @map("period_month")
+  periodYear  Int       @map("period_year")
+  amount      Decimal   @db.Decimal(10, 2)
+  status      String    @default("pending") @db.VarChar(10)
+  paidAt      DateTime? @map("paid_at")
+  paidAmount  Decimal?  @map("paid_amount") @db.Decimal(10, 2)
+  receivedBy  String?   @map("received_by")
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  person         Person  @relation("PersonPayments", fields: [personId], references: [id])
+  receivedByUser Person? @relation("ReceivedByPerson", fields: [receivedBy], references: [id])
+
+  @@unique([personId, periodMonth, periodYear])
+  @@index([status, periodYear, periodMonth])
+  @@map("sandaa_payments")
+}
+
+// ============================================
+// OTHER PAYMENT TYPES
+// ============================================
+model PaymentType {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(100)
+  amount      Decimal  @default(0) @db.Decimal(10, 2) // 0 means variable amount
+  description String?  @db.Text
+  type        String   @default("incoming") @db.VarChar(20) // 'incoming' (income) or 'outgoing' (expense)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  payments OtherPayment[]
+
+  @@map("payment_types")
+}
+
+model OtherPayment {
+  id            String    @id @default(uuid())
+  personId      String    @map("person_id")
+  paymentTypeId String    @map("payment_type_id")
+  amount        Decimal   @db.Decimal(10, 2)
+  reason        String?   @db.Text
+  status        String    @default("pending") @db.VarChar(10)
+  paidAt        DateTime? @map("paid_at")
+  receivedBy    String?   @map("received_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  person         Person      @relation("PersonOtherPayments", fields: [personId], references: [id])
+  paymentType    PaymentType @relation(fields: [paymentTypeId], references: [id])
+  receivedByUser Person?     @relation("ReceivedByPersonOther", fields: [receivedBy], references: [id])
+
+  @@map("other_payments")
+}
+
+// ============================================
+// ZAKATH MANAGEMENT
+// ============================================
+model ZakathCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(100)
+  nameArabic  String?  @map("name_arabic") @db.VarChar(100)
+  description String?  @db.Text
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+
+  requests ZakathRequest[]
+
+  @@map("zakath_categories")
+}
+
+model ZakathPeriod {
+  id             String    @id @default(uuid())
+  name           String    @db.VarChar(100)
+  hijriMonth     Int?      @map("hijri_month")
+  hijriYear      Int       @map("hijri_year")
+  gregorianStart DateTime? @map("gregorian_start") @db.Date
+  gregorianEnd   DateTime? @map("gregorian_end") @db.Date
+  status         String    @default("active") @db.VarChar(20) // active, completed, cancelled
+  totalCollected Decimal?  @map("total_collected") @db.Decimal(12, 2)
+  totalDistributed Decimal? @map("total_distributed") @db.Decimal(12, 2)
+  completedAt    DateTime? @map("completed_at")
+  completedBy    String?   @map("completed_by")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  createdBy      String?   @map("created_by")
+
+  collections   ZakathCollection[]
+  requests      ZakathRequest[]
+
+  @@map("zakath_periods")
+}
+
+model ZakathCollection {
+  id             String   @id @default(uuid())
+  zakathPeriodId String   @map("zakath_period_id")
+  donorId        String?  @map("donor_id")
+  donorName      String?  @map("donor_name") @db.VarChar(100)
+  donorPhone     String?  @map("donor_phone") @db.VarChar(20)
+  amount         Decimal  @db.Decimal(12, 2)
+  collectionDate DateTime @map("collection_date") @db.Date
+  paymentMethod  String?  @map("payment_method") @db.VarChar(20) // cash, bank_transfer, cheque
+  referenceNo    String?  @map("reference_no") @db.VarChar(50)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String?  @map("created_by")
+
+  zakathPeriod ZakathPeriod @relation(fields: [zakathPeriodId], references: [id])
+  donor        Person?      @relation(fields: [donorId], references: [id])
+
+  @@index([zakathPeriodId])
+  @@index([collectionDate])
+  @@map("zakath_collections")
+}
+
+model ZakathRequest {
+  id              String    @id @default(uuid())
+  zakathPeriodId  String    @map("zakath_period_id")
+  requesterId     String?   @map("requester_id") // Optional for external requesters
+  categoryId      String    @map("category_id")
+  amountRequested Decimal   @map("amount_requested") @db.Decimal(12, 2)
+  reason          String    @db.Text
+  notes           String?   @db.Text
+  supportingDocs  String?   @map("supporting_docs") @db.Text
+  status          String    @default("pending") @db.VarChar(20) // pending, approved, rejected, distributed, partial
+  amountApproved  Decimal?  @map("amount_approved") @db.Decimal(12, 2)
+  decisionDate    DateTime? @map("decision_date") @db.Date
+  decisionNotes   String?   @map("decision_notes") @db.Text
+  decidedBy       String?   @map("decided_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  // External requester fields (when requesterId is null)
+  isExternal      Boolean  @default(false) @map("is_external")
+  externalName    String?  @map("external_name") @db.VarChar(200)
+  externalPhone   String?  @map("external_phone") @db.VarChar(20)
+  externalNic     String?  @map("external_nic") @db.VarChar(20)
+  externalAddress String?  @map("external_address") @db.Text
+
+  zakathPeriod  ZakathPeriod         @relation(fields: [zakathPeriodId], references: [id])
+  requester     Person?              @relation(fields: [requesterId], references: [id])
+  category      ZakathCategory       @relation(fields: [categoryId], references: [id])
+  distributions ZakathDistribution[]
+
+  @@index([zakathPeriodId])
+  @@index([status])
+  @@map("zakath_requests")
+}
+
+model ZakathDistribution {
+  id              String   @id @default(uuid())
+  zakathRequestId String   @map("zakath_request_id")
+  amount          Decimal  @db.Decimal(12, 2)
+  distributedAt   DateTime @map("distributed_at")
+  distributedBy   String?  @map("distributed_by")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  zakathRequest     ZakathRequest @relation(fields: [zakathRequestId], references: [id])
+  distributedByUser Person?       @relation(fields: [distributedBy], references: [id])
+
+  @@index([zakathRequestId])
+  @@map("zakath_distributions")
+}
+
+// ============================================
+// KURBAAN MANAGEMENT
+// ============================================
+model KurbaanPeriod {
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)
+  hijriYear     Int      @map("hijri_year")
+  gregorianDate DateTime? @map("gregorian_date") @db.Date
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdBy     String?  @map("created_by")
+
+  participants KurbaanParticipant[]
+
+  @@map("kurbaan_periods")
+}
+
+model KurbaanParticipant {
+  id              String    @id @default(uuid())
+  kurbaanPeriodId String    @map("kurbaan_period_id")
+  familyHeadId    String?   @map("family_head_id") // Optional for external families
+  qrCode          String    @map("qr_code") @db.Text
+  isDistributed   Boolean   @default(false) @map("is_distributed")
+  distributedAt   DateTime? @map("distributed_at")
+  distributedBy   String?   @map("distributed_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  // External family fields (when familyHeadId is null)
+  isExternal          Boolean  @default(false) @map("is_external")
+  externalName        String?  @map("external_name") @db.VarChar(200)
+  externalPhone       String?  @map("external_phone") @db.VarChar(20)
+  externalAddress     String?  @map("external_address") @db.Text
+  externalPeopleCount Int?     @map("external_people_count")
+
+  kurbaanPeriod     KurbaanPeriod @relation(fields: [kurbaanPeriodId], references: [id])
+  familyHead        Person?       @relation("KurbaanFamilyHead", fields: [familyHeadId], references: [id])
+  distributedByUser Person?       @relation("DistributedBy", fields: [distributedBy], references: [id])
+
+  @@unique([kurbaanPeriodId, familyHeadId])
+  @@map("kurbaan_participants")
+}
+
+// ============================================
+// DONATIONS MANAGEMENT
+// ============================================
+model DonationCategory {
+  id       String  @id @default(uuid())
+  name     String  @db.VarChar(100)
+  type     String  @db.VarChar(20) // 'money' or 'goods'
+  isActive Boolean @default(true) @map("is_active")
+
+  donations     Donation[]
+  distributions DonationDistribution[]
+
+  @@map("donation_categories")
+}
+
+model Donation {
+  id              String    @id @default(uuid())
+  donorId         String?   @map("donor_id")
+  donorName       String?   @map("donor_name") @db.VarChar(100)
+  donorPhone      String?   @map("donor_phone") @db.VarChar(20)
+  categoryId      String    @map("category_id")
+  donationType    String    @map("donation_type") @db.VarChar(20)
+  amount          Decimal?  @db.Decimal(12, 2)
+  itemDescription String?   @map("item_description") @db.Text
+  quantity        Int?
+  unit            String?   @db.VarChar(20)
+  estimatedValue  Decimal?  @map("estimated_value") @db.Decimal(12, 2)
+  donationDate    DateTime  @map("donation_date") @db.Date
+  notes           String?   @db.Text
+  isCarryForward  Boolean   @default(false) @map("is_carry_forward") // Carried from previous year
+  carryFromYear   Int?      @map("carry_from_year") // Year from which this was carried
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdBy       String?   @map("created_by")
+
+  donor    Person?          @relation(fields: [donorId], references: [id])
+  category DonationCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([donationDate])
+  @@index([categoryId])
+  @@map("donations")
+}
+
+model DonationDistribution {
+  id               String    @id @default(uuid())
+  recipientId      String?   @map("recipient_id")
+  recipientName    String?   @map("recipient_name") @db.VarChar(100)
+  recipientPhone   String?   @map("recipient_phone") @db.VarChar(20)
+  recipientAddress String?   @map("recipient_address") @db.Text
+  categoryId       String    @map("category_id")
+  distributionType String    @map("distribution_type") @db.VarChar(20)
+  amount           Decimal?  @db.Decimal(12, 2)
+  itemDescription  String?   @map("item_description") @db.Text
+  quantity         Int?
+  unit             String?   @db.VarChar(20)
+  reason           String?   @db.Text
+  distributionDate DateTime  @map("distribution_date") @db.Date
+  notes            String?   @db.Text
+  approvedBy       String?   @map("approved_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  createdBy        String?   @map("created_by")
+
+  recipient Person?          @relation(fields: [recipientId], references: [id])
+  category  DonationCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([distributionDate])
+  @@map("donation_distributions")
+}
+
+// ============================================
+// FINANCIAL MANAGEMENT
+// ============================================
+model IncomeCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+
+  incomes Income[]
+
+  @@map("income_categories")
+}
+
+model Income {
+  id              String   @id @default(uuid())
+  receiptNumber   String?  @map("receipt_number") @db.VarChar(50)
+  categoryId      String   @map("category_id")
+  amount          Decimal  @db.Decimal(12, 2)
+  sourceType      String?  @map("source_type") @db.VarChar(20)
+  payerId         String?  @map("payer_id")
+  payerName       String?  @map("payer_name") @db.VarChar(100)
+  description     String?  @db.Text
+  transactionDate DateTime @map("transaction_date") @db.Date
+  paymentMethod   String?  @default("cash") @map("payment_method") @db.VarChar(20)
+  referenceNo     String?  @map("reference_no") @db.VarChar(50)
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdBy       String?  @map("created_by")
+
+  category IncomeCategory @relation(fields: [categoryId], references: [id])
+  payer    Person?        @relation(fields: [payerId], references: [id])
+
+  @@index([transactionDate])
+  @@index([categoryId])
+  @@map("incomes")
+}
+
+model ExpenseCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+
+  expenses Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id              String   @id @default(uuid())
+  voucherNumber   String?  @map("voucher_number") @db.VarChar(50)
+  categoryId      String   @map("category_id")
+  amount          Decimal  @db.Decimal(12, 2)
+  payeeType       String?  @map("payee_type") @db.VarChar(20)
+  payeeId         String?  @map("payee_id")
+  payeeName       String?  @map("payee_name") @db.VarChar(100)
+  description     String   @db.Text
+  transactionDate DateTime @map("transaction_date") @db.Date
+  paymentMethod   String?  @default("cash") @map("payment_method") @db.VarChar(20)
+  referenceNo     String?  @map("reference_no") @db.VarChar(50)
+  approvedBy      String?  @map("approved_by")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdBy       String?  @map("created_by")
+
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  payee    Person?         @relation(fields: [payeeId], references: [id])
+  salaries Salary[]
+
+  @@index([transactionDate])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+model Salary {
+  id            String    @id @default(uuid())
+  personId      String    @map("person_id")
+  amount        Decimal   @db.Decimal(10, 2)
+  periodMonth   Int       @map("period_month")
+  periodYear    Int       @map("period_year")
+  status        String    @default("pending") @db.VarChar(20)
+  paidAt        DateTime? @map("paid_at")
+  paymentMethod String?   @map("payment_method") @db.VarChar(20)
+  expenseId     String?   @map("expense_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  createdBy     String?   @map("created_by")
+
+  person  Person   @relation(fields: [personId], references: [id])
+  expense Expense? @relation(fields: [expenseId], references: [id])
+
+  @@unique([personId, periodMonth, periodYear])
+  @@map("salaries")
+}
+
+// ============================================
+// INVENTORY MANAGEMENT
+// ============================================
+model InventoryItem {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  quantity    Int      @default(1)
+  location    String?  @db.VarChar(100)
+  isRentable  Boolean  @default(false) @map("is_rentable")
+  rentalPrice Decimal? @map("rental_price") @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rentals      InventoryRental[]
+  transactions InventoryTransaction[]
+
+  @@map("inventory_items")
+}
+
+// Inventory quantity change history
+model InventoryTransaction {
+  id              String   @id @default(uuid())
+  inventoryItemId String   @map("inventory_item_id")
+  type            String   @db.VarChar(20) // increase, decrease
+  quantity        Int      // positive number always
+  previousQty     Int      @map("previous_qty")
+  newQty          Int      @map("new_qty")
+  reason          String   @db.VarChar(50) // donation, purchased, returned, damaged, lost, sold, disposed, other
+  notes           String?  @db.Text
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  createdByUser User?         @relation(fields: [createdBy], references: [id])
+
+  @@map("inventory_transactions")
+}
+
+model InventoryRental {
+  id              String    @id @default(uuid())
+  inventoryItemId String    @map("inventory_item_id")
+  rentedTo        String?   @map("rented_to")
+  rentedToName    String?   @map("rented_to_name") @db.VarChar(100)
+  quantity        Int       @default(1)
+  rentalDate      DateTime  @map("rental_date") @db.Date
+  returnDate      DateTime? @map("return_date") @db.Date
+  expectedReturn  DateTime? @map("expected_return") @db.Date
+  rentalAmount    Decimal?  @map("rental_amount") @db.Decimal(10, 2)
+  status          String    @default("active") @db.VarChar(20)
+  // Payment tracking
+  paymentAmount   Decimal?  @map("payment_amount") @db.Decimal(10, 2)
+  paymentStatus   String?   @map("payment_status") @db.VarChar(20) // pending, paid, waived
+  paymentPaidAt   DateTime? @map("payment_paid_at")
+  paymentNotes    String?   @map("payment_notes") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  rentedToPerson Person?      @relation(fields: [rentedTo], references: [id])
+
+  @@map("inventory_rentals")
+}
+
+// ============================================
+// PROPERTY MANAGEMENT
+// ============================================
+model Property {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  address      String?  @db.Text
+  description  String?  @db.Text
+  propertyType String?  @map("property_type") @db.VarChar(50)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  rentals PropertyRental[]
+
+  @@map("properties")
+}
+
+model PropertyRental {
+  id            String    @id @default(uuid())
+  propertyId    String    @map("property_id")
+  tenantName    String    @map("tenant_name") @db.VarChar(100)
+  tenantContact String?   @map("tenant_contact") @db.VarChar(50)
+  monthlyRent   Decimal   @map("monthly_rent") @db.Decimal(10, 2)
+  startDate     DateTime  @map("start_date") @db.Date
+  endDate       DateTime? @map("end_date") @db.Date
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  property     Property      @relation(fields: [propertyId], references: [id])
+  rentPayments RentPayment[]
+
+  @@map("property_rentals")
+}
+
+model RentPayment {
+  id               String    @id @default(uuid())
+  propertyRentalId String    @map("property_rental_id")
+  amount           Decimal   @db.Decimal(10, 2)
+  periodMonth      Int       @map("period_month")
+  periodYear       Int       @map("period_year")
+  status           String    @default("pending") @db.VarChar(20) // pending, paid
+  paidAt           DateTime? @map("paid_at")
+  notes            String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  propertyRental PropertyRental @relation(fields: [propertyRentalId], references: [id])
+
+  @@unique([propertyRentalId, periodMonth, periodYear])
+  @@index([status])
+  @@map("rent_payments")
+}
+
+// ============================================
+// BOARD MANAGEMENT
+// ============================================
+model BoardRole {
+  id                String   @id @default(uuid())
+  roleName          String   @unique @map("role_name") @db.VarChar(50)
+  isMahallaSpecific Boolean  @default(false) @map("is_mahalla_specific")
+  sortOrder         Int      @default(0) @map("sort_order")
+  isActive          Boolean  @default(true) @map("is_active")
+
+  boardMembers BoardMember[]
+
+  @@map("board_roles")
+}
+
+model BoardTerm {
+  id        String    @id @default(uuid())
+  name      String    @db.VarChar(100)
+  startDate DateTime  @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  termYears Int       @default(2) @map("term_years")
+  isCurrent Boolean   @default(false) @map("is_current")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  members BoardMember[]
+
+  @@map("board_terms")
+}
+
+model BoardMember {
+  id          String    @id @default(uuid())
+  boardTermId String    @map("board_term_id")
+  personId    String    @map("person_id")
+  boardRoleId String    @map("board_role_id")
+  mahallaId   String?   @map("mahalla_id")
+  startDate   DateTime  @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  notes       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  boardTerm BoardTerm  @relation(fields: [boardTermId], references: [id])
+  person    Person     @relation(fields: [personId], references: [id])
+  boardRole BoardRole  @relation(fields: [boardRoleId], references: [id])
+  mahalla   Mahalla?   @relation(fields: [mahallaId], references: [id])
+
+  @@index([boardTermId])
+  @@index([personId])
+  @@map("board_members")
+}
+
+// ============================================
+// MOSQUE ROLES
+// ============================================
+model MosqueRole {
+  id          String  @id @default(uuid())
+  roleName    String  @unique @map("role_name") @db.VarChar(50)
+  description String? @db.Text
+  isActive    Boolean @default(true) @map("is_active")
+
+  assignments MosqueRoleAssignment[]
+
+  @@map("mosque_roles")
+}
+
+model MosqueRoleAssignment {
+  id           String    @id @default(uuid())
+  mosqueId     String    @map("mosque_id")
+  mosqueRoleId String    @map("mosque_role_id")
+  personId     String    @map("person_id")
+  startDate    DateTime  @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  assignedBy   String?   @map("assigned_by")
+
+  mosque     Mosque     @relation(fields: [mosqueId], references: [id])
+  mosqueRole MosqueRole @relation(fields: [mosqueRoleId], references: [id])
+  person     Person     @relation(fields: [personId], references: [id])
+
+  @@index([mosqueId])
+  @@map("mosque_role_assignments")
+}
+
+// ============================================
+// ISSUES & MEETINGS
+// ============================================
+model Issue {
+  id           String    @id @default(uuid())
+  title        String    @db.VarChar(200)
+  description  String?   @db.Text
+  raisedBy     String?   @map("raised_by")
+  raisedDate   DateTime  @map("raised_date") @db.Date
+  status       String    @default("open") @db.VarChar(20)
+  resolution   String?   @db.Text
+  resolvedDate DateTime? @map("resolved_date") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  raisedByPerson   Person?           @relation(fields: [raisedBy], references: [id])
+  meetingDecisions MeetingDecision[]
+
+  @@map("issues")
+}
+
+model Meeting {
+  id          String    @id @default(uuid())
+  title       String?   @db.VarChar(200)
+  meetingDate DateTime  @map("meeting_date") @db.Date
+  meetingTime DateTime? @map("meeting_time") @db.Time(0)
+  location    String?   @db.VarChar(100)
+  attendees   String?   @db.Text
+  agenda      String?   @db.Text
+  minutes     String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by")
+
+  decisions MeetingDecision[]
+
+  @@map("meetings")
+}
+
+model MeetingDecision {
+  id             String   @id @default(uuid())
+  meetingId      String   @map("meeting_id")
+  decision       String   @db.Text
+  relatedIssueId String?  @map("related_issue_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  meeting      Meeting @relation(fields: [meetingId], references: [id])
+  relatedIssue Issue?  @relation(fields: [relatedIssueId], references: [id])
+
+  @@map("meeting_decisions")
+}
+
+// ============================================
+// ANNOUNCEMENTS
+// ============================================
+model Announcement {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(200)
+  content     String    @db.Text
+  publishDate DateTime  @map("publish_date") @db.Date
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  createdBy   String?   @map("created_by")
+
+  @@map("announcements")
+}
+
+// ============================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================
+model User {
+  id                 String    @id @default(uuid())
+  personId           String    @unique @map("person_id")
+  phone              String    @unique @db.VarChar(20)
+  passwordHash       String    @map("password_hash") @db.VarChar(255)
+  email              String?   @db.VarChar(100)
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  passwordChangedAt  DateTime? @map("password_changed_at")
+  status             String    @default("active") @db.VarChar(20)
+  failedAttempts     Int       @default(0) @map("failed_attempts")
+  lockedUntil        DateTime? @map("locked_until")
+  lastLogin          DateTime? @map("last_login")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  person                Person                 @relation(fields: [personId], references: [id])
+  permissions           UserPermission[]
+  passwordResetRequests PasswordResetRequest[]
+  auditLogs             AuditLog[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@map("users")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique @db.VarChar(50)
+  module      String  @db.VarChar(50)
+  action      String  @db.VarChar(20)
+  description String? @db.VarChar(200)
+
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+model UserPermission {
+  id           String  @id @default(uuid())
+  userId       String  @map("user_id")
+  permissionId Int     @map("permission_id")
+  mahallaId    String? @map("mahalla_id")
+  grantedAt    DateTime @default(now()) @map("granted_at")
+  grantedBy    String?  @map("granted_by")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([userId, permissionId, mahallaId])
+  @@map("user_permissions")
+}
+
+model PasswordResetRequest {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  resetType    String    @map("reset_type") @db.VarChar(20)
+  otpCode      String?   @map("otp_code") @db.VarChar(6)
+  otpExpiresAt DateTime? @map("otp_expires_at")
+  resetBy      String?   @map("reset_by")
+  tempPassword String?   @map("temp_password") @db.VarChar(255)
+  isUsed       Boolean   @default(false) @map("is_used")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("password_reset_requests")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String   @db.VarChar(50)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id")
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
